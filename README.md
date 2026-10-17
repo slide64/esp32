@@ -166,3 +166,22 @@ La compilation cloud et les tests logiciels ne remplacent pas la validation
 sur la carte : couleurs, orientation, fluidité simultanée GIF/audio, volume,
 connexion à votre broker et déclenchement des automatisations restent à vérifier
 avec votre matériel et votre réseau.
+
+## Diagnostic audio sans moniteur série
+
+La version `audio-diag-1` ajoute l'entité **Diagnostic audio** à la section
+Diagnostic de l'appareil MQTT. Si **Audio disponible** est désactivé, relever
+le texte de cette entité : il distingue la détection I²C du codec ES8311,
+sa configuration, l'initialisation I²S et l'allocation de la tâche audio.
+Ce diagnostic ne prouve pas à lui seul que le haut-parleur émet du son.
+
+Pour mettre à jour un projet Windows extrait d'un ZIP : conserver le projet
+actuel et son `include/config.local.h`, télécharger le nouveau ZIP, puis
+copier/coller les dossiers `src` et `include` de la nouvelle archive dans le
+projet existant en remplaçant les fichiers proposés. Ne pas supprimer les
+anciens dossiers : `config.local.h` n'est pas inclus dans l'archive et doit
+rester en place. Ensuite lancer **Build**, puis **Upload** et relire l'entité
+Diagnostic audio dans Home Assistant.
+
+Le moniteur série réaffiche aussi un résumé toutes les dix secondes lorsqu'il
+est connecté ; il n'est plus nécessaire de capturer l'instant du démarrage.

@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <atomic>
 bool initAudio();
+const char *audioDiagnostic();
 void playAudio(const char *path, bool loop = false);
 void stopAudio();
 extern std::atomic<unsigned> audioVolume;

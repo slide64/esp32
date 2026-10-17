@@ -18,7 +18,8 @@ static void state() {
   String json=String("{\"monster\":\"")+monster+"\",\"track\":\""+track+
     "\",\"power\":\""+(enabled?"ON":"OFF")+"\",\"volume\":"+audioVolume.load()+
     ",\"playing\":"+(audioPlaying.load()?"true":"false")+
-    ",\"sd\":"+(sdReady?"true":"false")+",\"audio\":"+(audioReady?"true":"false")+"}";
+    ",\"sd\":"+(sdReady?"true":"false")+",\"audio\":"+(audioReady?"true":"false")+
+    ",\"audio_diagnostic\":\""+audioDiagnostic()+"\",\"firmware\":\"audio-diag-1\"}";
   mqtt.publish((base+"/state").c_str(),json.c_str(),true);
 }
 static void discoveryEntity(const char *kind,const char *id,const char *name,const String &fields) {
@@ -41,6 +42,7 @@ static void discover() {
   discoveryEntity("binary_sensor","playing","Lecture audio",common+"\"value_template\":\"{{ 'ON' if value_json.playing else 'OFF' }}\"");
   discoveryEntity("binary_sensor","sd","Carte microSD",common+"\"value_template\":\"{{ 'ON' if value_json.sd else 'OFF' }}\",\"entity_category\":\"diagnostic\"");
   discoveryEntity("binary_sensor","audio","Audio disponible",common+"\"value_template\":\"{{ 'ON' if value_json.audio else 'OFF' }}\",\"entity_category\":\"diagnostic\"");
+  discoveryEntity("sensor","audio_diagnostic","Diagnostic audio",common+"\"value_template\":\"{{ value_json.audio_diagnostic }}\",\"entity_category\":\"diagnostic\"");
 }
 static void startTrack() {
   if (!enabled || track=="silence") { stopAudio(); return; }
@@ -90,7 +92,11 @@ void setup() {
   mqtt.setCallback(message); mqtt.setSocketTimeout(1); mqtt.setKeepAlive(20);
 }
 void loop() {
-  static uint32_t lastConnect=0, lastState=0;
+  static uint32_t lastConnect=0, lastState=0, lastSerial=0;
+  if (Serial && millis()-lastSerial>10000) {
+    lastSerial=millis();
+    Serial.printf("Firmware audio-diag-1 | microSD=%s | audio=%s\n",sdReady?"OK":"absente",audioDiagnostic());
+  }
   screenLoop();
   if (WiFi.status()==WL_CONNECTED && strlen(MQTT_HOST)) {
     if (!mqtt.connected() && millis()-lastConnect>5000) {

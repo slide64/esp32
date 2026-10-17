@@ -3,6 +3,7 @@
 #include "board/es8311.h"
 #include <ESP_I2S.h>
 #include <SD_MMC.h>
+#include <Wire.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 std::atomic<unsigned> audioVolume{30};
@@ -11,6 +12,13 @@ struct Request { char path[64]; bool loop; };
 static QueueHandle_t requests;
 static I2SClass output;
 static bool ready;
+static char diagnostic[96]="initialisation_non_lancee";
+const char *audioDiagnostic() { return diagnostic; }
+static bool audioFailure(const char *stage, int error) {
+  snprintf(diagnostic,sizeof(diagnostic),"%s (%s, %d)",stage,esp_err_to_name(error),error);
+  Serial.printf("Audio : %s\n",diagnostic);
+  return false;
+}
 static void audioTask(void *) {
   File file;
   WavInfo info;
@@ -47,18 +55,36 @@ static void audioTask(void *) {
 }
 bool initAudio() {
   pinMode(15,OUTPUT); digitalWrite(15,LOW);
+  Wire.beginTransmission(ES8311_ADDRESS_0);
+  uint8_t probe=Wire.endTransmission();
+  if (probe) {
+    snprintf(diagnostic,sizeof(diagnostic),"ES8311 absent a 0x18 (I2C %u)",probe);
+    Serial.printf("Audio : %s\n",diagnostic);
+    return false;
+  }
   auto codec=es8311_create(I2C_NUM_0,ES8311_ADDRRES_0);
+  if (!codec) return audioFailure("Allocation codec",ESP_ERR_NO_MEM);
   es8311_clock_config_t clock{};
   clock.mclk_from_mclk_pin=true;
   clock.mclk_frequency=24000*256;
   clock.sample_frequency=24000;
-  if (!codec || es8311_init(codec,&clock,ES8311_RESOLUTION_16,ES8311_RESOLUTION_16)!=ESP_OK ||
-      es8311_voice_volume_set(codec,65,nullptr)!=ESP_OK ||
-      es8311_microphone_config(codec,false)!=ESP_OK) return false;
+  esp_err_t error=es8311_init(codec,&clock,ES8311_RESOLUTION_16,ES8311_RESOLUTION_16);
+  if (error!=ESP_OK) { es8311_delete(codec); return audioFailure("Initialisation ES8311",error); }
+  error=es8311_voice_volume_set(codec,65,nullptr);
+  if (error!=ESP_OK) { es8311_delete(codec); return audioFailure("Volume ES8311",error); }
+  error=es8311_microphone_config(codec,false);
+  es8311_delete(codec);
+  if (error!=ESP_OK) return audioFailure("Configuration ES8311",error);
   output.setPins(48,38,47,-1,2);
-  if (!output.begin(I2S_MODE_STD,24000,I2S_DATA_BIT_WIDTH_16BIT,I2S_SLOT_MODE_MONO,I2S_STD_SLOT_LEFT)) return false;
+  if (!output.begin(I2S_MODE_STD,24000,I2S_DATA_BIT_WIDTH_16BIT,I2S_SLOT_MODE_MONO,I2S_STD_SLOT_LEFT))
+    return audioFailure("Initialisation I2S",output.lastError());
   requests=xQueueCreate(1,sizeof(Request));
-  if (!requests || xTaskCreatePinnedToCore(audioTask,"wav",6144,nullptr,2,nullptr,1)!=pdPASS) return false;
+  if (!requests) { output.end(); return audioFailure("File de commandes",ESP_ERR_NO_MEM); }
+  if (xTaskCreatePinnedToCore(audioTask,"wav",6144,nullptr,2,nullptr,1)!=pdPASS) {
+    vQueueDelete(requests); requests=nullptr; output.end();
+    return audioFailure("Tache audio",ESP_ERR_NO_MEM);
+  }
+  strlcpy(diagnostic,"OK",sizeof(diagnostic));
   digitalWrite(15,HIGH); ready=true; return true;
 }
 void playAudio(const char *path,bool loop) {

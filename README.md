@@ -1,0 +1,168 @@
+# Monstre Halloween — Waveshare ESP32-S3 1.85C-BOX
+
+Firmware Arduino pour **ESP32-S3-Touch-LCD-1.85C**, écran rond ST77916
+360×360, codec ES8311 et boîtier haut-parleur. Contrôle Home Assistant via
+votre broker MQTT existant et découverte automatique. Ne pas utiliser les
+brochages de la variante 1.85 sans « C ».
+
+## Fonctions
+
+- GIF animés citrouille (`pumpkin`), démon (`demon`), zombie (`zombie`).
+- Yeux animés intégrés lorsque le GIF ou la microSD manque.
+- Ambiance musicale en boucle, voix ou effets ponctuels sur le haut-parleur.
+- Entités Home Assistant : monstre, son, volume, activation, faire peur,
+  arrêter le son, lecture en cours et diagnostics microSD/audio.
+- Retour d'état MQTT, disponibilité avec Last Will et reconnexion.
+
+La voix interrompt la musique ; cette version ne mélange pas deux pistes.
+Les voix sont des fichiers enregistrés, sans synthèse vocale ni microphone.
+Le Bluetooth n'est pas nécessaire pour les commandes Home Assistant.
+
+## 1. Préparer la compilation
+
+Installer Python et PlatformIO Core **6.1.18**, ou utiliser l'extension PlatformIO
+pour VS Code. Le projet fixe pioarduino **54.03.21-2** (Arduino ESP32 **3.2.1**),
+LVGL **9.3.0** et PubSubClient **2.8**. Les sources des pilotes Waveshare sont
+incluses ; voir `THIRD_PARTY.md`.
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install platformio==6.1.18 Pillow==11.3.0 esp-idf-size==1.6.1
+cp include/config.example.h include/config.local.h
+```
+
+Compléter `include/config.local.h` avec le Wi-Fi **2,4 GHz**, l'adresse du broker
+MQTT et son compte dédié. Le fichier est ignoré par Git. Ne pas publier ses
+identifiants. Donner à ce compte accès à `halloween/halloween185c/#`,
+`homeassistant/#` pour la découverte et la lecture de `homeassistant/status`.
+Un identifiant `DEVICE_ID` distinct est nécessaire par appareil.
+
+MQTT utilise ici le port **1883**, sans TLS : prévu pour votre réseau local.
+Ne pas exposer ce broker à Internet. Aucun accès à votre Home Assistant privé
+n'est nécessaire dans l'environnement cloud pour compiler.
+
+Dans le cloud, le venv existe déjà et le script suivant sélectionne les bons
+chemins d'outils. En local, il utilise `pio` depuis votre PATH :
+
+```sh
+./scripts/pio.sh run -j 2
+```
+
+Sans `config.local.h`, le firmware compile et affiche l'animation autonome,
+mais ne tente aucune connexion Wi-Fi/MQTT.
+
+## 2. Préparer la microSD
+
+Utiliser une carte **FAT32**. Les médias de démonstration prêts à copier sont
+dans **`demo-media/`**, inclus dans le ZIP GitHub : copier ses dossiers
+`monsters/` et `audio/` à la racine de la microSD.
+
+Pour générer une autre copie dans `media/` :
+
+```sh
+python scripts/make_media.py
+```
+
+Dans le cloud : `/workspace/tools/halloween-venv/bin/python scripts/make_media.py`.
+Copier **le contenu** de `media/` à la racine de la microSD :
+
+```text
+/monsters/pumpkin.gif
+/monsters/demon.gif
+/monsters/zombie.gif
+/audio/ambiance.wav
+/audio/pumpkin.wav
+/audio/demon.wav
+/audio/zombie.wav
+```
+
+Les trois GIF sont des dessins animés originaux de démonstration. Les WAV fournis
+sont des ambiances et effets synthétiques, **pas des voix parlées**. Remplacer les
+WAV des monstres par vos enregistrements de voix. Vous pouvez aussi remplacer
+l'ambiance par votre musique. La copie générée dans `media/` est ignorée par Git et ses fichiers
+peuvent être recréés. Le générateur conserve les fichiers déjà présents.
+
+Format obligatoire : **WAV PCM signé 16 bits, mono, 24 000 Hz**. Conversion :
+
+```sh
+ffmpeg -i ma_voix.mp3 -ar 24000 -ac 1 -c:a pcm_s16le media/audio/demon.wav
+```
+
+Les GIF doivent mesurer **360×360** ; commencer avec 10–15 images/s et une
+palette de 32–128 couleurs pour limiter les accès microSD. Exemple :
+
+```sh
+ffmpeg -i monstre.gif -filter_complex \
+  '[0:v]fps=12,scale=360:360:force_original_aspect_ratio=decrease,pad=360:360:(ow-iw)/2:(oh-ih)/2:black,split[a][b];[a]palettegen=max_colors=64[p];[b][p]paletteuse' \
+  -loop 0 media/monsters/demon.gif
+```
+
+Insérer la carte avant la mise sous tension ; redémarrer après remplacement
+ou ajout de fichiers. Le bouton « Faire peur » relance le GIF sélectionné et
+joue `/audio/<monstre>.wav`. Un WAV absent ou incompatible est signalé sur le
+port série ; la partie visuelle reste utilisable.
+
+## 3. Flasher et vérifier sur la carte
+
+Connecter la carte par USB avec un câble de données :
+
+```sh
+./scripts/pio.sh run --target upload
+./scripts/pio.sh device monitor
+```
+
+Le port série est à 115200 bauds. En cas de problème de connexion, maintenir
+BOOT pendant RESET puis réessayer. Utiliser `--upload-port` avec le port série
+requis si plusieurs appareils sont branchés.
+
+Vérifier successivement : animation de démarrage, `microSD=OK audio=OK` sur
+le port série, connexion réseau, puis appareil « Monstre Halloween » dans
+**Paramètres → Appareils et services → MQTT** dans Home Assistant. L'intégration
+MQTT et sa découverte doivent être activées. Tester d'abord le volume à 20–30 %.
+Le défaut est 30 %. L'interrupteur « Actif » coupe le rétroéclairage et le son ;
+il ne met pas l'ESP32 en veille et ne coupe pas son Wi-Fi.
+
+Les paramètres de scène et de volume reviennent aux valeurs par défaut après
+redémarrage. Une automation HA peut les remettre à la connexion de l'appareil.
+
+## 4. Automatisations Home Assistant
+
+Adapter l'exemple dans `homeassistant/automations.yaml` à votre détecteur.
+Les commandes MQTT ci-dessous évitent de dépendre des noms d'entités générés
+par Home Assistant. Remplacer `halloween185c` si vous changez `DEVICE_ID`.
+
+| Topic | Payload |
+| --- | --- |
+| `halloween/halloween185c/monster/set` | `pumpkin`, `demon`, `zombie` |
+| `halloween/halloween185c/track/set` | `ambiance`, `voix`, `silence` |
+| `halloween/halloween185c/volume/set` | entier de `0` à `100` |
+| `halloween/halloween185c/power/set` | `ON`, `OFF` |
+| `halloween/halloween185c/scare/set` | `PRESS` |
+| `halloween/halloween185c/stop/set` | `PRESS` |
+
+Envoyer les commandes **sans retain**, pour éviter de rejouer une scène lors
+d'une reconnexion. Les états et la découverte sont retenus. L'état JSON arrive
+sur `halloween/halloween185c/state`, la disponibilité sur
+`halloween/halloween185c/availability`. Si vous renommez l'appareil, supprimer
+les anciennes entités MQTT et leurs topics de découverte retenus.
+
+## Matériel et validation
+
+Broches reprises des exemples Waveshare 1.85C : I²C SDA=11/SCL=10 ;
+QSPI CLK=40, D0=46, D1=45, D2=42, D3=41, CS=21 ; rétroéclairage=5 ;
+reset écran via EXIO2 du TCA9554 ; SD CLK=14/CMD=17/D0=16 ;
+audio MCLK=2/BCLK=48/LRCLK=38/DOUT=47 ; amplificateur=15.
+Configuration mémoire visée : flash 16 Mo et PSRAM OPI 8 Mo.
+
+Test du lecteur WAV, y compris fichiers tronqués et formats incompatibles :
+
+```sh
+g++ -std=c++17 -Wall -Wextra -Werror -I include tests/test_wav.cpp -o /tmp/test_halloween_wav
+/tmp/test_halloween_wav
+```
+
+La compilation cloud et les tests logiciels ne remplacent pas la validation
+sur la carte : couleurs, orientation, fluidité simultanée GIF/audio, volume,
+connexion à votre broker et déclenchement des automatisations restent à vérifier
+avec votre matériel et votre réseau.

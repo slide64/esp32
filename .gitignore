@@ -1,0 +1,6 @@
+.pio/
+include/config.local.h
+__pycache__/
+media/
+
+.venv/

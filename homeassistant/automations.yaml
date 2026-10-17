@@ -1,0 +1,31 @@
+# Ajouter à automations.yaml, ou adapter dans l'éditeur YAML de Home Assistant.
+# Exemple : changer binary_sensor.mouvement_entree pour votre détecteur.
+- id: halloween_monstre_mouvement
+  alias: Halloween - Un monstre accueille les visiteurs
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.mouvement_entree
+      from: "off"
+      to: "on"
+  conditions:
+    - condition: time
+      after: "18:00:00"
+      before: "23:30:00"
+  actions:
+    - action: mqtt.publish
+      data:
+        topic: halloween/halloween185c/monster/set
+        payload: demon
+        retain: false
+    - action: mqtt.publish
+      data:
+        topic: halloween/halloween185c/volume/set
+        payload: "35"
+        retain: false
+    - action: mqtt.publish
+      data:
+        topic: halloween/halloween185c/scare/set
+        payload: PRESS
+        retain: false
+    - delay: "00:00:10"
+  mode: single

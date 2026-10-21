@@ -7,4 +7,5 @@ de sondage, suppression du test de démarrage, initialisation du résultat de le
 et correction de la valeur PWM maximale.
 LVGL 9.3.0 (MIT) et PubSubClient 2.8 (MIT) sont téléchargés par PlatformIO.
 
-`es8311.cpp` vérifie aussi l’allocation du handle avant de l’utiliser.
+`es8311.cpp` vérifie aussi l’allocation du handle avant de l’utiliser,
+refuse les lectures I2C incomplètes et propage l'échec d'écriture du gain ADC.

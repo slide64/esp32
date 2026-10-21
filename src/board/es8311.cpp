@@ -154,9 +154,13 @@ static bool i2c_reg8_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data, uin
     printf("endTransmission: %u\n", error);
     return false;
   }
-  Wire.requestFrom(dev_addr, len);
+  if (Wire.requestFrom(dev_addr, len) != len) {
+    return false;
+  }
   for (int i = 0; i < len; i++) {
-    *data++ = Wire.read();
+    int value = Wire.read();
+    if (value < 0) return false;
+    *data++ = static_cast<uint8_t>(value);
   }
   return true;
 }
@@ -354,7 +358,7 @@ esp_err_t es8311_microphone_config(es8311_handle_t dev, bool digital_mic)
     if (digital_mic) {
         reg14 |= BIT(6);
     }
-    es8311_write_reg(dev, ES8311_ADC_REG17, 0xC8); // Set ADC gain @todo move this to ADC config section
+    ESP_RETURN_ON_ERROR(es8311_write_reg(dev, ES8311_ADC_REG17, 0xC8), TAG, "I2C read/write error");
 
     return es8311_write_reg(dev, ES8311_SYSTEM_REG14, reg14);
 }

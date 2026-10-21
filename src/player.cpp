@@ -54,30 +54,44 @@ static void audioTask(void *) {
   }
 }
 bool initAudio() {
+  if (ready) return true;
   pinMode(15,OUTPUT); digitalWrite(15,LOW);
-  Wire.beginTransmission(ES8311_ADDRESS_0);
+  // Supply MCLK before resetting/powering the codec's digital circuitry.
+  output.setPins(48,38,47,-1,2);
+  if (!output.begin(I2S_MODE_STD,24000,I2S_DATA_BIT_WIDTH_16BIT,I2S_SLOT_MODE_MONO,I2S_STD_SLOT_LEFT))
+    return audioFailure("Initialisation I2S",output.lastError());
+  // ES8311 CE selects one of the two addresses documented by Espressif.
+  uint8_t address=ES8311_ADDRESS_0;
+  Wire.beginTransmission(address);
   uint8_t probe=Wire.endTransmission();
   if (probe) {
-    snprintf(diagnostic,sizeof(diagnostic),"ES8311 absent a 0x18 (I2C %u)",probe);
+    address=ES8311_ADDRESS_1;
+    Wire.beginTransmission(address);
+    probe=Wire.endTransmission();
+  }
+  if (probe) {
+    output.end();
+    snprintf(diagnostic,sizeof(diagnostic),"ES8311 absent a 0x18/0x19 (I2C %u)",probe);
     Serial.printf("Audio : %s\n",diagnostic);
     return false;
   }
-  auto codec=es8311_create(I2C_NUM_0,ES8311_ADDRRES_0);
-  if (!codec) return audioFailure("Allocation codec",ESP_ERR_NO_MEM);
+  auto codec=es8311_create(I2C_NUM_0,address);
+  if (!codec) { output.end(); return audioFailure("Allocation codec",ESP_ERR_NO_MEM); }
   es8311_clock_config_t clock{};
   clock.mclk_from_mclk_pin=true;
   clock.mclk_frequency=24000*256;
   clock.sample_frequency=24000;
   esp_err_t error=es8311_init(codec,&clock,ES8311_RESOLUTION_16,ES8311_RESOLUTION_16);
-  if (error!=ESP_OK) { es8311_delete(codec); return audioFailure("Initialisation ES8311",error); }
-  error=es8311_voice_volume_set(codec,65,nullptr);
-  if (error!=ESP_OK) { es8311_delete(codec); return audioFailure("Volume ES8311",error); }
+  if (error!=ESP_OK) { es8311_delete(codec); output.end(); return audioFailure("Initialisation ES8311",error); }
+  // This API maps 75 to register 0xBF (0 dB), not to 75% amplitude.
+  // Keep codec gain at unity; audioVolume already scales the PCM samples.
+  error=es8311_voice_volume_set(codec,75,nullptr);
+  if (error!=ESP_OK) { es8311_delete(codec); output.end(); return audioFailure("Volume ES8311",error); }
   error=es8311_microphone_config(codec,false);
+  if (error!=ESP_OK) { es8311_delete(codec); output.end(); return audioFailure("Configuration ES8311",error); }
+  error=es8311_voice_mute(codec,false);
   es8311_delete(codec);
-  if (error!=ESP_OK) return audioFailure("Configuration ES8311",error);
-  output.setPins(48,38,47,-1,2);
-  if (!output.begin(I2S_MODE_STD,24000,I2S_DATA_BIT_WIDTH_16BIT,I2S_SLOT_MODE_MONO,I2S_STD_SLOT_LEFT))
-    return audioFailure("Initialisation I2S",output.lastError());
+  if (error!=ESP_OK) { output.end(); return audioFailure("Activation sortie ES8311",error); }
   requests=xQueueCreate(1,sizeof(Request));
   if (!requests) { output.end(); return audioFailure("File de commandes",ESP_ERR_NO_MEM); }
   if (xTaskCreatePinnedToCore(audioTask,"wav",6144,nullptr,2,nullptr,1)!=pdPASS) {

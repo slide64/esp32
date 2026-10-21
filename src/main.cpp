@@ -19,7 +19,7 @@ static void state() {
     "\",\"power\":\""+(enabled?"ON":"OFF")+"\",\"volume\":"+audioVolume.load()+
     ",\"playing\":"+(audioPlaying.load()?"true":"false")+
     ",\"sd\":"+(sdReady?"true":"false")+",\"audio\":"+(audioReady?"true":"false")+
-    ",\"audio_diagnostic\":\""+audioDiagnostic()+"\",\"firmware\":\"audio-diag-1\"}";
+    ",\"audio_diagnostic\":\""+audioDiagnostic()+"\",\"firmware\":\"audio-fix-3\"}";
   mqtt.publish((base+"/state").c_str(),json.c_str(),true);
 }
 static void discoveryEntity(const char *kind,const char *id,const char *name,const String &fields) {
@@ -41,7 +41,7 @@ static void discover() {
   discoveryEntity("button","stop","Arreter le son",String("\"command_topic\":\"")+base+"/stop/set\",\"payload_press\":\"PRESS\"");
   discoveryEntity("binary_sensor","playing","Lecture audio",common+"\"value_template\":\"{{ 'ON' if value_json.playing else 'OFF' }}\"");
   discoveryEntity("binary_sensor","sd","Carte microSD",common+"\"value_template\":\"{{ 'ON' if value_json.sd else 'OFF' }}\",\"entity_category\":\"diagnostic\"");
-  discoveryEntity("binary_sensor","audio","Audio disponible",common+"\"value_template\":\"{{ 'ON' if value_json.audio else 'OFF' }}\",\"entity_category\":\"diagnostic\"");
+  discoveryEntity("binary_sensor","audio","Audio disponible",common+"\"value_template\":\"{{ 'ON' if value_json.audio else 'OFF' }}\",\"entity_category\":\"diagnostic\",\"json_attributes_topic\":\""+base+"/state\",\"json_attributes_template\":\"{{ {'diagnostic': value_json.audio_diagnostic, 'firmware': value_json.firmware} | tojson }}\"");
   discoveryEntity("sensor","audio_diagnostic","Diagnostic audio",common+"\"value_template\":\"{{ value_json.audio_diagnostic }}\",\"entity_category\":\"diagnostic\"");
 }
 static void startTrack() {
@@ -80,10 +80,11 @@ void setup() {
   heap_caps_malloc_extmem_enable(4096);
   I2C_Init(); TCA9554PWR_Init(0x00);
   if (!initScreen()) { Serial.println("Initialisation ecran impossible"); while (true) delay(1000); }
+  // Reserve internal DMA buffers and the audio task stack before loading GIFs.
+  audioReady=initAudio();
   SD_MMC.setPins(14,17,16);
   sdReady=SD_MMC.begin("/sdcard",true) && SD_MMC.cardType()!=CARD_NONE;
   showMonster(monster.c_str());
-  audioReady=initAudio();
   Serial.printf("microSD=%s audio=%s\n",sdReady?"OK":"absente",audioReady?"OK":"echec");
   WiFi.mode(WIFI_STA); WiFi.setAutoReconnect(true);
   if (strlen(WIFI_SSID)) WiFi.begin(WIFI_SSID,WIFI_PASSWORD);
@@ -95,7 +96,7 @@ void loop() {
   static uint32_t lastConnect=0, lastState=0, lastSerial=0;
   if (Serial && millis()-lastSerial>10000) {
     lastSerial=millis();
-    Serial.printf("Firmware audio-diag-1 | microSD=%s | audio=%s\n",sdReady?"OK":"absente",audioDiagnostic());
+    Serial.printf("Firmware audio-fix-3 | microSD=%s | audio=%s\n",sdReady?"OK":"absente",audioDiagnostic());
   }
   screenLoop();
   if (WiFi.status()==WL_CONNECTED && strlen(MQTT_HOST)) {

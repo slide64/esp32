@@ -169,6 +169,51 @@ avec votre matériel et votre réseau.
 
 ## Diagnostic audio sans moniteur série
 
+### Test autonome du haut-parleur (sans carte SD ni réseau)
+
+Le target PlatformIO **audio_selftest** isole le codec, l'I2S et l'amplificateur
+de l'application Halloween. Il utilise le brochage du [schéma Waveshare V2](https://github.com/waveshareteam/ESP32-S3-Touch-LCD-1.85C/blob/main/hardware/schematics/ESP32-S3-Touch-LCD-1.85C-V2--Schematic.pdf_.pdf)
+et la séquence du [test audio officiel 03](https://github.com/waveshareteam/ESP32-S3-Touch-LCD-1.85C/blob/8ead4a96bf3a278fc4ebd8ef4768657e17fa2880/Arduino/examples/03_audio_out_no_tf/03_audio_out_no_tf.ino).
+Le schéma confirme SDA=11, SCL=10, MCLK=2, BCLK=48, LRCLK=38, données=47,
+amplificateur=15 ; le codec est ES8311 à 0x18. Son alimentation A3V3 a son
+régulateur activé matériellement, sans GPIO supplémentaire à activer.
+
+Ce test remplace temporairement le firmware sur la carte. Il ne démarre ni
+l'écran, ni le Wi-Fi, ni MQTT, ni la microSD. Les identifiants du projet ne sont
+pas utilisés. Un haut-parleur doit être connecté au connecteur prévu.
+
+Dans VS Code : **PlatformIO → PROJECT TASKS → audio_selftest → General → Upload**,
+puis **Monitor** dans le même groupe. Ou, dans le terminal PlatformIO :
+
+```sh
+pio run -e audio_selftest -t upload --upload-port COM3
+pio device monitor -e audio_selftest --port COM3
+```
+
+Dans le cloud, `./scripts/pio.sh run -e audio_selftest -j 2` vérifie uniquement
+la compilation. L'exécution requiert la carte physique.
+
+Un bip de 600 Hz, limité à environ 8 % de l'amplitude PCM maximale, doit durer
+une demi-seconde toutes les deux secondes. Le moniteur répète toutes les trois
+secondes `audio-selftest-1 | I2C ACK:... | audio=...` pour ne pas dépendre de
+la capture des premières lignes au démarrage. En cas d'échec du codec,
+l'amplificateur reste désactivé. La séquence officielle configure le codec
+avant l'I2S ; si elle échoue, le test réessaie avec MCLK actif.
+
+Un bip audible valide le codec, l'amplificateur et le haut-parleur dans ce
+test isolé. Un échec d'initialisation n'établit pas à lui seul une panne
+matérielle : conserver le code I2C et les adresses détectées pour le diagnostic.
+Pour remettre l'animation et Home Assistant, lancer ensuite **Upload** sous
+**halloween**, qui reste l'environnement par défaut.
+
+Le fichier fourni `audio_player_test.c` définit les broches d'**ESP-BOX**, pas
+celles de la Waveshare 1.85C ; sa fonction mute ne fait que journaliser et ne
+configure pas l'ES8311. `audio_player.h` fournit l'interface d'un lecteur, pas
+son pilote matériel. Ils ont été utilisés comme références, sans importer
+leurs broches dans le firmware Waveshare.
+
+### Diagnostic du firmware Halloween
+
 La version `audio-diag-5` conserve les deux transactions ES8311 en échec
 (adresse, registre, lecture/écriture et code I2C ou nombre d'octets reçus), puis
 liste les adresses connues qui acquittent sur le bus : tactile 0x15, codec

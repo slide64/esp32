@@ -169,13 +169,18 @@ avec votre matériel et votre réseau.
 
 ## Diagnostic audio sans moniteur série
 
-La version `audio-fix-3` démarre l'horloge I2S avant de sonder/configurer le codec,
+La version `audio-fix-4` démarre l'horloge I2S avant de configurer le codec,
 désactive explicitement son mode muet et fixe son gain à 0 dB. Le volume reste
 réglé par Home Assistant (30 % au démarrage) : l'ancien réglage du codec ajoutait
 environ 13 dB d'atténuation. Après compilation et flash, sélectionner
 « ambiance » ou « Faire peur » pour tester ; le démarrage reste silencieux.
 La microSD doit contenir les WAV au format indiqué plus haut.
-Le codec est recherché aux deux adresses ES8311 documentées (0x18 et 0x19).
+Le pilote essaie l'initialisation par des transactions de registre aux deux
+adresses ES8311 documentées (0x18 et 0x19), sans abandonner sur le seul résultat
+d'une sonde I2C vide. Ce changement suit l'initialisation directe des exemples
+Waveshare ; il ne prouve pas que la sonde vide était la cause du refus I2C
+sur une carte donnée. Si les transactions réelles échouent également, l'audio
+reste signalé indisponible et l'amplificateur reste désactivé.
 Les lectures I2C incomplètes et les erreurs d'écriture sont signalées comme
 des échecs. Les buffers DMA et la tâche audio sont alloués avant le chargement
 des GIF pour préserver la mémoire interne nécessaire au son.
@@ -184,7 +189,8 @@ L'entité existante **Audio disponible** expose désormais les attributs
 de diagnostic séparé.
 
 Le test logiciel d'initialisation, avec matériel simulé, se lance avec
-`python3 tests/check_audio_init.py`. Il vérifie les deux adresses, la répétition
+`python3 tests/check_audio_init.py`. Il vérifie le cas d'une sonde vide refusée
+avec initialisation par registre réussie, les deux adresses, la répétition
 de l'initialisation et neuf chemins d'échec. `python3 tests/check_codec_i2c.py`
 exerce le vrai pilote ES8311 avec des lectures/écritures I2C simulées. Ces tests
 ne remplacent pas un essai du haut-parleur sur la carte.

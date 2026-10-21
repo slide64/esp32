@@ -17,7 +17,7 @@ constexpr int OUTPUT=1, LOW=0, HIGH=1, pdTRUE=1, pdPASS=1;
 constexpr int I2S_MODE_STD=0, I2S_DATA_BIT_WIDTH_16BIT=16;
 constexpr int I2S_SLOT_MODE_MONO=1, I2S_STD_SLOT_LEFT=1;
 inline bool clockOn=false, ampOn=false, codecAlive=false;
-inline int failure=0, volume=0, creations=0;
+inline int failure=0, volume=0, creations=0, codecAddress=0;
 inline const char *esp_err_to_name(int) { return "mock_error"; }
 inline void pinMode(int,int) {}
 inline void digitalWrite(int pin,int value) { assert(pin==15); ampOn=value; }
@@ -55,14 +55,16 @@ harness = r'''
 #include "player.h"
 extern "C" {
 es8311_handle_t es8311_create(i2c_port_t,uint16_t address) {
-  assert(address==(failure==10 ? 0x19 : 0x18));
+  assert(address==(creations==0 ? 0x18 : 0x19));
+  codecAddress=address;
   ++creations;
-  assert(clockOn); codecAlive=failure!=3; return codecAlive ? reinterpret_cast<void *>(1) : nullptr;
+  assert(clockOn); codecAlive=failure!=3 && !(failure==11 && creations==2);
+  return codecAlive ? reinterpret_cast<void *>(1) : nullptr;
 }
 void es8311_delete(es8311_handle_t) { codecAlive=false; }
 esp_err_t es8311_init(es8311_handle_t,const es8311_clock_config_t *c,es8311_resolution_t,es8311_resolution_t) {
   assert(clockOn && c->mclk_frequency==6144000 && c->sample_frequency==24000);
-  return failure==4;
+  return failure==4 || ((failure==10 || failure==11) && codecAddress==0x18);
 }
 esp_err_t es8311_voice_volume_set(es8311_handle_t,int v,int *) { volume=v; return failure==5; }
 esp_err_t es8311_microphone_config(es8311_handle_t,bool digital) { assert(!digital); return failure==6; }
@@ -71,12 +73,12 @@ esp_err_t es8311_voice_mute(es8311_handle_t,bool muted) { assert(!muted); return
 int main(int argc,char **) {
   failure=argc-1;
   bool ok=initAudio();
-  assert(ok==(failure==0 || failure==10)); assert(!codecAlive);
+  assert(ok==(failure==0 || failure==1 || failure==10)); assert(!codecAlive);
   assert(ampOn==ok && clockOn==ok);
   if(ok) {
     assert(volume==75); assert((volume*256/100)-1==0xBF);
     assert(std::strcmp(audioDiagnostic(),"OK")==0);
-    assert(initAudio()); assert(creations==1);
+    assert(initAudio()); assert(creations==(failure==10 ? 2 : 1));
   }
   else assert(std::strcmp(audioDiagnostic(),"OK")!=0);
 }
@@ -94,6 +96,6 @@ with tempfile.TemporaryDirectory() as directory:
     subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                     '-I'+str(tmp), '-I'+str(root/'include'), '-I'+str(root/'src'),
                     str(root/'src/player.cpp'), str(tmp/'test.cpp'), '-o', str(binary)], check=True)
-    for failure in range(11):
+    for failure in range(12):
         subprocess.run([str(binary)] + ['failure']*failure, check=True)
-print('Audio init: both codec addresses, repeated init and 9 failure paths OK (mock hardware)')
+print('Audio init: rejected empty probe, both addresses, repeated init and 9 failure paths OK (mock hardware)')

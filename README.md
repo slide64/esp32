@@ -169,6 +169,15 @@ avec votre matériel et votre réseau.
 
 ## Diagnostic audio sans moniteur série
 
+La version `audio-diag-5` conserve les deux transactions ES8311 en échec
+(adresse, registre, lecture/écriture et code I2C ou nombre d'octets reçus), puis
+liste les adresses connues qui acquittent sur le bus : tactile 0x15, codec
+0x18/0x19, expandeur 0x20 et horloge 0x51. Les sondes sont limitées à ces
+adresses et n'écrivent aucun registre. Les mêmes informations restent visibles
+dans `Diagnostic audio`, les attributs d'`Audio disponible` et le résumé série
+toutes les dix secondes. Ce diagnostic ne corrige pas à lui seul un codec qui
+ne répond pas et ne prouve pas une panne matérielle.
+
 La version `audio-fix-4` démarre l'horloge I2S avant de configurer le codec,
 désactive explicitement son mode muet et fixe son gain à 0 dB. Le volume reste
 réglé par Home Assistant (30 % au démarrage) : l'ancien réglage du codec ajoutait

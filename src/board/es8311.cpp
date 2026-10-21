@@ -143,6 +143,11 @@ static const struct _coeff_div coeff_div[] = {
 };
 
 static const char *TAG = "ES8311";
+static char last_i2c_error[80] = "aucune erreur I2C";
+
+const char *es8311_last_i2c_error(void) {
+    return last_i2c_error;
+}
 
 
 static bool i2c_reg8_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data, uint8_t len) {
@@ -151,15 +156,21 @@ static bool i2c_reg8_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data, uin
   Wire.write(reg_addr);
   error = Wire.endTransmission(true);
   if (error) {
+    snprintf(last_i2c_error, sizeof(last_i2c_error), "I2C R 0x%02X reg0x%02X code%u", dev_addr, reg_addr, error);
     printf("endTransmission: %u\n", error);
     return false;
   }
-  if (Wire.requestFrom(dev_addr, len) != len) {
+  size_t received = Wire.requestFrom(dev_addr, len);
+  if (received != len) {
+    snprintf(last_i2c_error, sizeof(last_i2c_error), "I2C R 0x%02X reg0x%02X octets%u/%u", dev_addr, reg_addr, unsigned(received), len);
     return false;
   }
   for (int i = 0; i < len; i++) {
     int value = Wire.read();
-    if (value < 0) return false;
+    if (value < 0) {
+      snprintf(last_i2c_error, sizeof(last_i2c_error), "I2C R 0x%02X reg0x%02X octet manquant", dev_addr, reg_addr);
+      return false;
+    }
     *data++ = static_cast<uint8_t>(value);
   }
   return true;
@@ -174,6 +185,7 @@ static bool i2c_reg8_write(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data, ui
   }
   error = Wire.endTransmission(true);
   if (error) {
+    snprintf(last_i2c_error, sizeof(last_i2c_error), "I2C W 0x%02X reg0x%02X code%u", dev_addr, reg_addr, error);
     printf("endTransmission: %u\n", error);
     return false;
   }

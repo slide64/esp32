@@ -54,6 +54,7 @@ harness = r'''
 #include "board/es8311.h"
 #include "player.h"
 extern "C" {
+const char *es8311_last_i2c_error() { return "I2C mock erreur"; }
 es8311_handle_t es8311_create(i2c_port_t,uint16_t address) {
   assert(address==(creations==0 ? 0x18 : 0x19));
   codecAddress=address;

@@ -3,6 +3,7 @@
 #include "board/es8311.h"
 #include <ESP_I2S.h>
 #include <SD_MMC.h>
+#include <Wire.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 std::atomic<unsigned> audioVolume{30};
@@ -11,7 +12,7 @@ struct Request { char path[64]; bool loop; };
 static QueueHandle_t requests;
 static I2SClass output;
 static bool ready;
-static char diagnostic[96]="initialisation_non_lancee";
+static char diagnostic[240]="initialisation_non_lancee";
 const char *audioDiagnostic() { return diagnostic; }
 static bool audioFailure(const char *stage, int error) {
   snprintf(diagnostic,sizeof(diagnostic),"%s (%s, %d)",stage,esp_err_to_name(error),error);
@@ -67,6 +68,7 @@ bool initAudio() {
   // An empty address-only probe must not prevent trying the codec driver.
   // CE selects 0x18 (the 1.85C default) or 0x19.
   es8311_handle_t codec=nullptr;
+  char firstError[80]{};
   esp_err_t error=ESP_OK;
   const uint8_t addresses[]={ES8311_ADDRESS_0,ES8311_ADDRESS_1};
   for (uint8_t address : addresses) {
@@ -74,11 +76,25 @@ bool initAudio() {
     if (!codec) { output.end(); return audioFailure("Allocation codec",ESP_ERR_NO_MEM); }
     error=es8311_init(codec,&clock,ES8311_RESOLUTION_16,ES8311_RESOLUTION_16);
     if (error==ESP_OK) break;
+    if (address==ES8311_ADDRESS_0)
+      strlcpy(firstError,es8311_last_i2c_error(),sizeof(firstError));
     es8311_delete(codec); codec=nullptr;
   }
   if (!codec) {
+    char acknowledged[24]{};
+    size_t used=0;
+    // Read-only address probes on this board's known bus devices only.
+    const uint8_t devices[]={0x15,0x18,0x19,0x20,0x51};
+    for (uint8_t address : devices) {
+      Wire.beginTransmission(address);
+      if (Wire.endTransmission()==0)
+        used+=snprintf(acknowledged+used,sizeof(acknowledged)-used," %02X",address);
+    }
+    snprintf(diagnostic,sizeof(diagnostic),"%s; %s; ACK:%s",firstError,
+             es8311_last_i2c_error(),used ? acknowledged : " aucun");
     output.end();
-    return audioFailure("ES8311 registres 0x18/0x19 SDA11 SCL10",error);
+    Serial.printf("Audio : %s\n",diagnostic);
+    return false;
   }
   // This API maps 75 to register 0xBF (0 dB), not to 75% amplitude.
   // Keep codec gain at unity; audioVolume already scales the PCM samples.

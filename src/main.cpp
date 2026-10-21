@@ -19,7 +19,7 @@ static void state() {
     "\",\"power\":\""+(enabled?"ON":"OFF")+"\",\"volume\":"+audioVolume.load()+
     ",\"playing\":"+(audioPlaying.load()?"true":"false")+
     ",\"sd\":"+(sdReady?"true":"false")+",\"audio\":"+(audioReady?"true":"false")+
-    ",\"audio_diagnostic\":\""+audioDiagnostic()+"\",\"firmware\":\"audio-fix-4\"}";
+    ",\"audio_diagnostic\":\""+audioDiagnostic()+"\",\"firmware\":\"audio-diag-5\"}";
   mqtt.publish((base+"/state").c_str(),json.c_str(),true);
 }
 static void discoveryEntity(const char *kind,const char *id,const char *name,const String &fields) {
@@ -96,7 +96,7 @@ void loop() {
   static uint32_t lastConnect=0, lastState=0, lastSerial=0;
   if (Serial && millis()-lastSerial>10000) {
     lastSerial=millis();
-    Serial.printf("Firmware audio-fix-4 | microSD=%s | audio=%s\n",sdReady?"OK":"absente",audioDiagnostic());
+    Serial.printf("Firmware audio-diag-5 | microSD=%s | audio=%s\n",sdReady?"OK":"absente",audioDiagnostic());
   }
   screenLoop();
   if (WiFi.status()==WL_CONNECTED && strlen(MQTT_HOST)) {

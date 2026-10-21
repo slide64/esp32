@@ -27,6 +27,9 @@ extern "C" {
 
 typedef void *es8311_handle_t;
 
+// Last failed control transfer, retained for startup diagnostics.
+const char *es8311_last_i2c_error(void);
+
 typedef enum {
     ES8311_MIC_GAIN_MIN = -1,
     ES8311_MIC_GAIN_0DB,

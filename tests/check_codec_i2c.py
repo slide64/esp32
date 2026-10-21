@@ -10,6 +10,7 @@ mock = r'''
 #include <cstdlib>
 #include <cstdio>
 #include <cassert>
+#include <cstring>
 using esp_err_t = int;
 using i2c_port_t = int;
 constexpr int ESP_OK=0, ESP_FAIL=-1, ESP_ERR_INVALID_ARG=2;
@@ -52,10 +53,13 @@ int main() {
   assert((Wire.regs[0x31]&0x60)==0);
   Wire.shortRead=true;
   assert(es8311_sample_frequency_config(codec,6144000,24000)==ESP_FAIL);
+  assert(std::strstr(es8311_last_i2c_error(),"R 0x18 reg0x02 octets0/1"));
   Wire.shortRead=false; Wire.missingByte=true;
   assert(es8311_sample_frequency_config(codec,6144000,24000)==ESP_FAIL);
+  assert(std::strstr(es8311_last_i2c_error(),"octet manquant"));
   Wire.missingByte=false; Wire.nackReg=0x17; Wire.regs[0x14]=0;
   assert(es8311_microphone_config(codec,false)==ESP_FAIL);
+  assert(std::strstr(es8311_last_i2c_error(),"W 0x18 reg0x17 code2"));
   assert(Wire.regs[0x14]==0); // do not continue after failed ADC write
   Wire.nackReg=-1;
   assert(es8311_microphone_config(codec,false)==ESP_OK);
